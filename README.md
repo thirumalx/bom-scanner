@@ -1,6 +1,6 @@
 # Multi-Module SBOM & CBOM Automation Engine (`bom-scanner`)
 
-A high-performance Rust automation engine designed to scan multi-module enterprise software repositories, generating compliant **Software Bills of Materials (SBOM)**, **Cryptographic Bills of Materials (CBOM)**, vulnerability assessments, and executive compliance registers.
+A high-performance Rust automation engine designed to scan multi-module enterprise software repositories, generating compliant **Software Bills of Materials (SBOM)**, **Cryptographic Bills of Materials (CBOM)**, comprehensive vulnerability assessments, and executive compliance registers.
 
 Compliant with:
 * **CERT-In Guidelines on SBOM / CBOM**
@@ -11,28 +11,48 @@ Compliant with:
 
 ---
 
-## Architecture & Output Layout
+## Key Features
+
+1. **Self-Contained & Zero-Setup**:
+   * **Automated Trivy Engine**: If Trivy is not detected, `bom-scanner` automatically downloads and configures the official Trivy binary for your OS and architecture. No separate download or unzipping required.
+   * **Embedded HTML Template**: The visual vulnerability reporting template is embedded directly inside the binary.
+2. **Comprehensive Multi-Scanner Coverage**:
+   * Runs all security scanners: **Vulnerabilities (`vuln`)**, **Misconfigurations (`misconfig`)**, **Secrets Exposure (`secret`)**, and **Licenses (`license`)**.
+   * Uses `--detection-priority comprehensive` and `--list-all-pkgs` for 100% complete package inventories.
+3. **Structured Outputs**:
+   * Separated directories for **SBOM (`/opt/bom/sbom`)** and **CBOM (`/opt/bom/cbom`)**.
+
+---
+
+## Output Layout
 
 ```
-<OUTPUT_DIR>/
-├── CycloneDX/                     # CycloneDX v1.7 SBOMs (*.cdx.json) with embedded CVEs & licenses
-├── SPDX/                          # SPDX-JSON SBOMs (*.spdx.json) ISO/IEC 5230 compliant
-├── HTML/                          # Interactive visual HTML vulnerability reports (*.html)
-├── JSON/                          # Raw Trivy JSON vulnerability & package telemetry (*.json)
-├── CBOM/                          # CycloneDX v1.6 CBOM (*.cbom.json) & Visual HTML Reports (*.html)
-├── CBOM_Executive_Dashboard.html  # Consolidated visual HTML dashboard across all modules
-├── CBOM_Executive_Register.csv    # Consolidated register of all algorithms, modes, keys, and PQC risks
-└── SBOM_Executive_Summary.csv     # Consolidated executive register across all modules (Deps, CVEs)
+/opt/bom/
+├── sbom/                          # Software Bill of Materials & Security Findings
+│   ├── CycloneDX/                 # CycloneDX v1.7 SBOMs (*.cdx.json) with vuln, misconfig, secrets, licenses
+│   ├── SPDX/                      # SPDX-JSON SBOMs (*.spdx.json) ISO/IEC 5230 compliant
+│   ├── HTML/                      # Interactive visual HTML vulnerability reports (*.html)
+│   ├── JSON/                      # Comprehensive Trivy JSON telemetry (--list-all-pkgs) (*.json)
+│   └── SBOM_Executive_Summary.csv # Consolidated executive register across all modules (CVEs, misconfigs, secrets)
+└── cbom/                          # Cryptographic Bill of Materials & PQC Governance
+    ├── <module>.cbom.json         # CycloneDX v1.6 Cryptographic Bills of Materials
+    ├── <module>.html              # Interactive visual CBOM reports with code snippets & remediation
+    ├── CBOM_Executive_Dashboard.html # Consolidated enterprise-wide visual CBOM dashboard
+    └── CBOM_Executive_Register.csv   # Consolidated register of all algorithms, modes, keys, and PQC risks
 ```
 
 ---
 
 ## What Gets Scanned
 
-### 1. Software Bill of Materials (SBOM) & Vulnerabilities
-* Scans all Maven (`pom.xml`) and Ant (`build.xml`, `.jar`) projects.
-* Runs in **offline mode (`--offline-scan`)** using Trivy's local vulnerability database to eliminate HTTP 429 rate limits from Maven Central.
-* Identifies dependencies, licenses, and assigns severity ratings (Critical, High, Medium, Low).
+### 1. Software Bill of Materials (SBOM) & Comprehensive Security
+* Scans Maven (`pom.xml`) and Ant (`build.xml`, `.jar`) projects.
+* Runs in **offline mode (`--offline-scan`)** using Trivy's local database to eliminate remote rate limits.
+* Enabled scanners:
+  * `--scanners vuln,misconfig,secret,license`
+  * `--list-all-pkgs` (ensures 100% of dependencies are cataloged in telemetry)
+  * `--detection-priority comprehensive`
+  * `--severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL`
 
 ### 2. Cryptographic Bill of Materials (CBOM)
 * **Java Cryptography Architecture (JCA) Scanner**:
@@ -48,16 +68,12 @@ Compliant with:
 
 ## Quick Start
 
-### Default Run (Scans All Modules in `D:\Vulerability`)
-```cmd
-cd D:\git-repo\bom-scanner
-cargo run --release
-```
-
-Or run the pre-compiled binary directly:
+### Interactive Mode (Default when run without arguments)
+When run without parameters, `bom-scanner` presents a guided configuration wizard pre-populated with `/opt` defaults:
 ```cmd
 D:\git-repo\bom-scanner\target\release\bom-scanner.exe
 ```
+*(Press **Enter** to accept each suggested default, or type a custom path.)*
 
 ---
 
@@ -68,31 +84,41 @@ USAGE:
     bom-scanner [OPTIONS] [SOURCE_DIR] [OUTPUT_DIR]
 
 ARGUMENTS:
-    [SOURCE_DIR]    Directory containing modules (default: D:\Vulerability)
-    [OUTPUT_DIR]    Directory to save reports (default: D:\Vulerability_SBOM_Reports)
+    [SOURCE_DIR]    Directory containing modules (default: /opt/repository)
+    [OUTPUT_DIR]    Base directory to save reports (default: /opt/bom -> /opt/bom/sbom & /opt/bom/cbom)
 
 OPTIONS:
-    -s, --source <PATH>     Specify source directory containing project modules
-    -o, --output <PATH>     Specify output directory for generated SBOMs & reports
-    -t, --trivy <PATH>      Specify path to trivy.exe executable (default: D:\trivy.exe)
-    --template <PATH>       Specify path to HTML report template (default: D:\html.tpl)
+    -s, --source <PATH>     Specify source directory containing project modules (default: /opt/repository)
+    -o, --output <PATH>     Specify base output directory (creates <PATH>/sbom and <PATH>/cbom)
+    --sbom-dir <PATH>       Specify custom directory for SBOM reports (default: /opt/bom/sbom)
+    --cbom-dir <PATH>       Specify custom directory for CBOM reports (default: /opt/bom/cbom)
+    -t, --trivy <PATH>      Specify path to trivy executable (auto-installed if omitted)
+    --template <PATH>       Specify path to HTML report template (default: /opt/html.tpl, auto-embedded)
     --offline               Run in offline mode using local DB without remote repo queries (default)
     --online                Allow remote Maven repository queries (may trigger rate limits)
-    -h, --help              Print help information
+    -i, --interactive       Force interactive configuration wizard
+    -y, --batch             Non-interactive batch mode (accept all defaults without prompt)
+    -h, --help              Print this help information
     -v, --version           Print version information
 ```
 
 ### Examples
 
-#### Scan a single module directly:
+#### 1. Interactive setup:
 ```cmd
-bom-scanner.exe -s "D:\Vulerability\SampleModule" -o "D:\MyReports"
+bom-scanner.exe
 ```
 
-#### Scan all modules to custom output directory:
-```cmd
-bom-scanner.exe -s "D:\Vulerability" -o "D:\Vulerability_SBOM_Reports"
+#### 2. Default run with `/opt` defaults:
+```bash
+./bom-scanner -y
 ```
+
+#### 3. Custom paths:
+```bash
+./bom-scanner -s "/path/to/source" -o "/path/to/output"
+```
+*(This automatically writes SBOMs to `/path/to/output/sbom` and CBOMs to `/path/to/output/cbom`.)*
 
 ---
 
@@ -106,8 +132,8 @@ curl -X POST "http://<dependency-track-host>:8081/api/v1/bom" \
   -F "projectName=SampleModule" \
   -F "projectVersion=1.0" \
   -F "autoCreate=true" \
-  -F "bom=@D:/Vulerability_SBOM_Reports/CycloneDX/SampleModule.cdx.json"
+  -F "bom=@/opt/bom/sbom/CycloneDX/SampleModule.cdx.json"
 ```
 
 ### 2. Ingesting CycloneDX 1.6 CBOMs
-The files in `CBOM/<module>.cbom.json` conform to the CycloneDX 1.6 Cryptography Extension specification (`cryptoProperties`) and can be ingested directly into Dependency-Track or IBM CBOMkit viewers.
+The files in `/opt/bom/cbom/<module>.cbom.json` conform to the CycloneDX 1.6 Cryptography Extension specification (`cryptoProperties`) and can be ingested directly into Dependency-Track or IBM CBOMkit viewers.
