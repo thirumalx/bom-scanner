@@ -93,8 +93,8 @@ struct SummaryRecord {
 
 fn print_banner() {
     println!("================================================================================");
-    println!("      NeSL Multi-Module SBOM & CBOM Automation Engine (Rust)                    ");
-    println!("      Compliant with CERT-In SBOM/CBOM Guidelines & STPI Audit Requirements     ");
+    println!("      Multi-Module SBOM & CBOM Automation Engine (Rust)                         ");
+    println!("      Compliant with CERT-In / ISO 27001 SBOM & CBOM Guidelines                 ");
     println!("================================================================================");
 }
 
@@ -122,7 +122,7 @@ OPTIONS:
 OUTPUT DIRECTORY STRUCTURE:
     <OUTPUT_DIR>/
     ├── CycloneDX/                # CycloneDX v1.7 JSON SBOMs (for OWASP Dependency-Track & CERT-In)
-    ├── SPDX/                     # SPDX-JSON SBOMs (for STPI compliance)
+    ├── SPDX/                     # SPDX-JSON SBOMs (ISO/IEC 5230 Standard)
     ├── HTML/                     # Human-readable visual vulnerability reports (<module>.html)
     ├── JSON/                     # Raw Trivy JSON vulnerability & package telemetry
     ├── CBOM/                     # CycloneDX v1.6 CBOM (.cbom.json) & Visual HTML Reports (.html)
@@ -150,7 +150,7 @@ fn parse_args() -> Result<Option<Config>, String> {
             print_help();
             return Ok(None);
         } else if arg == "-v" || arg == "--version" {
-            println!("bom-scanner v0.2.0 (NeSL Security & CBOM Automation)");
+            println!("bom-scanner v0.2.0 (SBOM & CBOM Automation)");
             return Ok(None);
         } else if arg == "-s" || arg == "--source" {
             i += 1;
@@ -448,7 +448,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             _ => {}
         }
 
-        // 2. Generate SPDX JSON SBOM (STPI standard)
+        // 2. Generate SPDX JSON SBOM (SPDX 2.3 standard)
         let mut spdx_cmd = Command::new(&config.trivy_path);
         spdx_cmd.arg("fs");
         if config.offline {
@@ -735,7 +735,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("--------------------------------------------------------------------------------");
     println!(" Generated Artifacts:");
     println!("   • CycloneDX SBOMs (CERT-In)   : {}", cyclonedx_dir.display());
-    println!("   • SPDX SBOMs (STPI)           : {}", spdx_dir.display());
+    println!("   • SPDX SBOMs (ISO/IEC 5230)   : {}", spdx_dir.display());
     println!("   • HTML Visual Reports         : {}", html_dir.display());
     println!("   • JSON Telemetry              : {}", json_dir.display());
     println!("   • CycloneDX 1.6 CBOMs         : {}", cbom_dir.display());

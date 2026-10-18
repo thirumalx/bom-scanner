@@ -1,12 +1,12 @@
-# NeSL SBOM & CBOM Automation Engine (`bom-scanner`)
+# Multi-Module SBOM & CBOM Automation Engine (`bom-scanner`)
 
 A high-performance Rust automation engine designed to scan multi-module enterprise software repositories, generating compliant **Software Bills of Materials (SBOM)**, **Cryptographic Bills of Materials (CBOM)**, vulnerability assessments, and executive compliance registers.
 
 Compliant with:
 * **CERT-In Guidelines on SBOM / CBOM**
-* **NeSL Third Party Risk Management Policy (`NeSL/FIN/L3/TRM/04` § 7.5)**
-* **STPI Comprehensive Assessment Recommendations for NeSL IT Systems**
+* **ISO/IEC 5230 (OpenChain Standard) & SPDX 2.3**
 * **CycloneDX v1.6 (CBOM) & v1.7 (SBOM) Specifications**
+* **NIST SP 800-161 & NIST SP 800-131A Security Requirements**
 * **OWASP Dependency-Track Integration Standards**
 
 ---
@@ -14,14 +14,15 @@ Compliant with:
 ## Architecture & Output Layout
 
 ```
-D:\Vulerability_SBOM_Reports/
-├── CycloneDX/                # CycloneDX v1.7 SBOMs (*.cdx.json) with embedded CVEs & licenses
-├── SPDX/                     # SPDX-JSON SBOMs (*.spdx.json) for STPI audits
-├── HTML/                     # Interactive visual HTML vulnerability reports (*.html)
-├── JSON/                     # Raw Trivy JSON vulnerability & package telemetry (*.json)
-├── CBOM/                     # CycloneDX v1.6 Cryptographic Bills of Materials (*.cbom.json)
-├── CBOM_Executive_Register.csv # Consolidated register of all algorithms, modes, keys, and PQC risks
-└── SBOM_Executive_Summary.csv  # Consolidated executive register across all modules (Deps, CVEs)
+<OUTPUT_DIR>/
+├── CycloneDX/                     # CycloneDX v1.7 SBOMs (*.cdx.json) with embedded CVEs & licenses
+├── SPDX/                          # SPDX-JSON SBOMs (*.spdx.json) ISO/IEC 5230 compliant
+├── HTML/                          # Interactive visual HTML vulnerability reports (*.html)
+├── JSON/                          # Raw Trivy JSON vulnerability & package telemetry (*.json)
+├── CBOM/                          # CycloneDX v1.6 CBOM (*.cbom.json) & Visual HTML Reports (*.html)
+├── CBOM_Executive_Dashboard.html  # Consolidated visual HTML dashboard across all modules
+├── CBOM_Executive_Register.csv    # Consolidated register of all algorithms, modes, keys, and PQC risks
+└── SBOM_Executive_Summary.csv     # Consolidated executive register across all modules (Deps, CVEs)
 ```
 
 ---
@@ -40,7 +41,7 @@ D:\Vulerability_SBOM_Reports/
 * **Keystore & Certificate Discovery**:
   * Identifies on-disk keystores (`.jks`, `.p12`, `.pfx`), public certificates (`.cer`, `.crt`, `.pem`), and HSM configs (`sunpkcs11.cfg`).
 * **Post-Quantum Cryptography (PQC) Risk Classification**:
-  * Evaluates vulnerability against quantum attacks (Shor's / Grover's algorithms), essential for NeSL's **8-year Information Utility (IU) statutory retention rule**.
+  * Evaluates vulnerability against quantum attacks (Shor's / Grover's algorithms) to plan migration to Post-Quantum Cryptography (NIST FIPS 203 ML-KEM & FIPS 204 ML-DSA).
   * Catalogs whether algorithms are **Quantum-Resistant**, **Quantum-Vulnerable**, or **Legacy / Insecure** (e.g. MD5, SHA-1, DES).
 
 ---
@@ -85,7 +86,7 @@ OPTIONS:
 
 #### Scan a single module directly:
 ```cmd
-bom-scanner.exe -s "D:\Vulerability\NESL_Portal_Maven_Test" -o "D:\MyReports"
+bom-scanner.exe -s "D:\Vulerability\SampleModule" -o "D:\MyReports"
 ```
 
 #### Scan all modules to custom output directory:
@@ -102,10 +103,10 @@ bom-scanner.exe -s "D:\Vulerability" -o "D:\Vulerability_SBOM_Reports"
 curl -X POST "http://<dependency-track-host>:8081/api/v1/bom" \
   -H "X-Api-Key: <YOUR_API_KEY>" \
   -H "Content-Type: multipart/form-data" \
-  -F "projectName=65BCertificateAPI" \
+  -F "projectName=SampleModule" \
   -F "projectVersion=1.0" \
   -F "autoCreate=true" \
-  -F "bom=@D:/Vulerability_SBOM_Reports/CycloneDX/65BCertificateAPI.cdx.json"
+  -F "bom=@D:/Vulerability_SBOM_Reports/CycloneDX/SampleModule.cdx.json"
 ```
 
 ### 2. Ingesting CycloneDX 1.6 CBOMs
