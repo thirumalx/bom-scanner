@@ -122,6 +122,10 @@ bom-scanner.exe
 
 ---
 
+## SBOM visualization tool
+
+* Upload `\opt\bom\sbom\CycloneDX\xxxx.cdx` to visualize tool [sunshine](https://cyclonedx.github.io/Sunshine/)
+
 ## Ingesting Reports into OWASP Dependency-Track
 
 ### 1. Ingesting CycloneDX SBOMs
