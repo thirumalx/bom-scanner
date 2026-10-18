@@ -501,10 +501,11 @@ OUTPUT DIRECTORY STRUCTURE:
     │   ├── JSON/                 # Comprehensive Trivy telemetry (--list-all-pkgs)
     │   └── SBOM_Executive_Summary.csv # Consolidated executive register across all modules
     └── cbom/                     # Cryptographic Bill of Materials & PQC Governance
+        ├── Executive/            # Enterprise-wide consolidated executive files
+        │   ├── CBOM_Executive_Dashboard.html # Consolidated enterprise-wide visual CBOM dashboard
+        │   └── CBOM_Executive_Register.csv   # Comprehensive register of all algorithms, keys & PQC risks
         ├── <module>.cbom.json    # CycloneDX 1.6 Cryptographic Bills of Materials
-        ├── <module>.html         # Interactive visual CBOM reports
-        ├── CBOM_Executive_Dashboard.html # Consolidated enterprise-wide visual CBOM dashboard
-        └── CBOM_Executive_Register.csv # Comprehensive register of all algorithms, keys & PQC risks
+        └── <module>.html         # Interactive visual CBOM reports
 "#
     );
 }
@@ -797,12 +798,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let spdx_dir = config.sbom_dir.join("SPDX");
     let html_dir = config.sbom_dir.join("HTML");
     let json_dir = config.sbom_dir.join("JSON");
+    let cbom_exec_dir = config.cbom_dir.join("Executive");
 
     fs::create_dir_all(&cyclonedx_dir)?;
     fs::create_dir_all(&spdx_dir)?;
     fs::create_dir_all(&html_dir)?;
     fs::create_dir_all(&json_dir)?;
     fs::create_dir_all(&config.cbom_dir)?;
+    fs::create_dir_all(&cbom_exec_dir)?;
 
     let mut summary_records: Vec<SummaryRecord> = Vec::with_capacity(total_modules);
     let mut all_crypto_assets: Vec<cbom::CryptoAsset> = Vec::new();
@@ -1154,16 +1157,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     writer.flush()?;
 
-    // Export Comprehensive CBOM Executive Register in CBOM directory
-    let cbom_csv_path = config.cbom_dir.join("CBOM_Executive_Register.csv");
+    // Export Comprehensive CBOM Executive Register in CBOM Executive directory
+    let cbom_csv_path = cbom_exec_dir.join("CBOM_Executive_Register.csv");
     let mut cbom_writer = csv::Writer::from_path(&cbom_csv_path)?;
     for asset in &all_crypto_assets {
         cbom_writer.serialize(asset)?;
     }
     cbom_writer.flush()?;
 
-    // Export Enterprise CBOM Global Dashboard HTML in CBOM directory
-    let cbom_dashboard_path = config.cbom_dir.join("CBOM_Executive_Dashboard.html");
+    // Export Enterprise CBOM Global Dashboard HTML in CBOM Executive directory
+    let cbom_dashboard_path = cbom_exec_dir.join("CBOM_Executive_Dashboard.html");
     let cbom_dashboard_html =
         cbom::generate_global_cbom_dashboard(total_modules, &all_crypto_assets);
     let _ = fs::write(&cbom_dashboard_path, cbom_dashboard_html);
@@ -1220,10 +1223,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("     ├── JSON Telemetry          : {}", json_dir.display());
     println!("     └── Executive Summary CSV   : {}", summary_csv_path.display());
     println!("   • CBOM Directory              : {}", config.cbom_dir.display());
+    println!("     ├── Executive Artifacts     : {}", cbom_exec_dir.display());
+    println!("     │   ├── Executive Dashboard : {}", cbom_dashboard_path.display());
+    println!("     │   └── Executive Register  : {}", cbom_csv_path.display());
     println!("     ├── CycloneDX 1.6 CBOMs     : {}", config.cbom_dir.display());
-    println!("     ├── CBOM Visual HTML Reports: {}", config.cbom_dir.display());
-    println!("     ├── Executive Dashboard     : {}", cbom_dashboard_path.display());
-    println!("     └── Executive Register CSV  : {}", cbom_csv_path.display());
+    println!("     └── CBOM Visual HTML Reports: {}", config.cbom_dir.display());
     println!("================================================================================");
 
     Ok(())

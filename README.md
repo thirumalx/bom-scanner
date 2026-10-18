@@ -35,10 +35,11 @@ Compliant with:
 │   ├── JSON/                      # Comprehensive Trivy JSON telemetry (--list-all-pkgs) (*.json)
 │   └── SBOM_Executive_Summary.csv # Consolidated executive register across all modules (CVEs, misconfigs, secrets)
 └── cbom/                          # Cryptographic Bill of Materials & PQC Governance
+    ├── Executive/                 # Consolidated enterprise-wide governance artifacts
+    │   ├── CBOM_Executive_Dashboard.html # Consolidated enterprise-wide visual CBOM dashboard
+    │   └── CBOM_Executive_Register.csv   # Consolidated register of all algorithms, modes, keys, and PQC risks
     ├── <module>.cbom.json         # CycloneDX v1.6 Cryptographic Bills of Materials
-    ├── <module>.html              # Interactive visual CBOM reports with code snippets & remediation
-    ├── CBOM_Executive_Dashboard.html # Consolidated enterprise-wide visual CBOM dashboard
-    └── CBOM_Executive_Register.csv   # Consolidated register of all algorithms, modes, keys, and PQC risks
+    └── <module>.html              # Interactive visual CBOM reports with code snippets & remediation
 ```
 
 ---
