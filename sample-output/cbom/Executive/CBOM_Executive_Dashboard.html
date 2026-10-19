@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Enterprise CBOM Executive Dashboard</title>
+    <style>
+        :root {
+            --bg: #f8fafc;
+            --card-bg: #ffffff;
+            --text-main: #0f172a;
+            --text-muted: #64748b;
+            --border: #e2e8f0;
+            --primary: #2563eb;
+            --primary-bg: #eff6ff;
+            --success: #16a34a;
+            --success-bg: #f0fdf4;
+            --warning: #d97706;
+            --warning-bg: #fffbeb;
+            --danger: #dc2626;
+            --danger-bg: #fef2f2;
+            --insecure: #991b1b;
+            --insecure-bg: #fee2e2;
+            --purple: #7c3aed;
+            --purple-bg: #f5f3ff;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background-color: var(--bg);
+            color: var(--text-main);
+            margin: 0;
+            padding: 30px;
+            line-height: 1.5;
+        }
+        .container {
+            max-width: 1500px;
+            margin: 0 auto;
+        }
+        .header {
+            background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%);
+            color: #ffffff;
+            border-radius: 12px;
+            padding: 32px 40px;
+            margin-bottom: 24px;
+            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+        }
+        .header h1 {
+            margin: 0 0 8px 0;
+            font-size: 28px;
+            letter-spacing: -0.5px;
+        }
+        .header p {
+            margin: 0;
+            color: #94a3b8;
+            font-size: 14px;
+        }
+        .header-meta {
+            margin-top: 16px;
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+        .pill {
+            background: rgba(255,255,255,0.12);
+            padding: 5px 14px;
+            border-radius: 9999px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+        .kpi-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+        .kpi-card {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        }
+        .kpi-title {
+            font-size: 12px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            font-weight: 600;
+            margin-bottom: 6px;
+        }
+        .kpi-value {
+            font-size: 32px;
+            font-weight: 700;
+            line-height: 1;
+        }
+        .kpi-desc {
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-top: 6px;
+        }
+        .card-primary .kpi-value { color: var(--primary); }
+        .card-success .kpi-value { color: var(--success); }
+        .card-danger .kpi-value { color: var(--danger); }
+        .card-insecure .kpi-value { color: var(--insecure); }
+        .card-purple .kpi-value { color: var(--purple); }
+
+        .toolbar {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 16px 20px;
+            margin-bottom: 20px;
+            display: flex;
+            gap: 16px;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+        }
+        .filter-group {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        .filter-btn {
+            background: #ffffff;
+            border: 1px solid var(--border);
+            padding: 6px 14px;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+        .filter-btn:hover, .filter-btn.active {
+            background: var(--primary);
+            color: #ffffff;
+            border-color: var(--primary);
+        }
+        .search-input {
+            padding: 8px 14px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            font-size: 13px;
+            min-width: 300px;
+            outline: none;
+        }
+        .search-input:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(37,99,235,0.15);
+        }
+
+        .table-container {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+            text-align: left;
+        }
+        thead {
+            background: #f1f5f9;
+            border-bottom: 1px solid var(--border);
+        }
+        th {
+            padding: 12px 14px;
+            font-weight: 600;
+            color: #334155;
+            white-space: nowrap;
+        }
+        td {
+            padding: 12px 14px;
+            border-bottom: 1px solid var(--border);
+            vertical-align: middle;
+        }
+        tr:last-child td {
+            border-bottom: none;
+        }
+        tr:hover td {
+            background-color: #f8fafc;
+        }
+        .algo-name {
+            font-weight: 600;
+            color: #0f172a;
+        }
+        .primitive-tag {
+            background: #f1f5f9;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 12px;
+            color: #475569;
+        }
+        .badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 9999px;
+            font-size: 11px;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+        .badge-success { background: var(--success-bg); color: var(--success); border: 1px solid rgba(22,163,74,0.3); }
+        .badge-danger { background: var(--danger-bg); color: var(--danger); border: 1px solid rgba(220,38,38,0.3); }
+        .badge-insecure { background: var(--insecure-bg); color: var(--insecure); border: 1px solid rgba(153,27,27,0.3); }
+        .badge-info { background: var(--purple-bg); color: var(--purple); border: 1px solid rgba(124,58,237,0.3); }
+        .file-loc {
+            font-family: monospace;
+            font-size: 11px;
+            color: #2563eb;
+            max-width: 240px;
+            word-break: break-all;
+        }
+        .line-num {
+            color: #dc2626;
+            font-weight: bold;
+        }
+        .code-snippet {
+            font-family: Consolas, "Courier New", monospace;
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            padding: 4px 8px;
+            border-radius: 4px;
+            display: block;
+            max-width: 280px;
+            overflow-x: auto;
+            white-space: nowrap;
+            color: #334155;
+            font-size: 11px;
+        }
+        .guidance-box {
+            font-size: 12px;
+            color: #475569;
+            max-width: 260px;
+        }
+        .footer {
+            margin-top: 24px;
+            text-align: center;
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Enterprise Cryptographic Bill of Materials (CBOM) Dashboard</h1>
+            <p>Consolidated register across 1 modules | Generated: 2026-10-19 12:19:54 | Generated by <a href="https://github.com/thirumalx/bom-scanner" target="_blank" style="color: #60a5fa; text-decoration: underline;">https://github.com/thirumalx/bom-scanner</a></p>
+            <div class="header-meta">
+                <span class="pill">CERT-In Guidelines Aligned</span>
+                <span class="pill">Cryptographic Governance</span>
+                <span class="pill">CycloneDX 1.6 Cryptography Standard</span>
+                <span class="pill">Post-Quantum Cryptography Readiness</span>
+            </div>
+        </div>
+
+        <div class="kpi-grid">
+            <div class="kpi-card card-primary">
+                <div class="kpi-title">Total Crypto Assets</div>
+                <div class="kpi-value">2</div>
+                <div class="kpi-desc">Across all 1 scanned modules</div>
+            </div>
+            <div class="kpi-card card-success">
+                <div class="kpi-title">Quantum-Resistant</div>
+                <div class="kpi-value">0</div>
+                <div class="kpi-desc">AES, SHA-256, SHA-512, HMAC</div>
+            </div>
+            <div class="kpi-card card-danger">
+                <div class="kpi-title">Quantum-Vulnerable (PQC Alert)</div>
+                <div class="kpi-value">1</div>
+                <div class="kpi-desc">RSA, ECC, eSign (Shor's Algorithm)</div>
+            </div>
+            <div class="kpi-card card-purple">
+                <div class="kpi-title">Keystores & Certs</div>
+                <div class="kpi-value">0</div>
+                <div class="kpi-desc">PKCS12, JKS, X.509 certificates</div>
+            </div>
+            <div class="kpi-card card-insecure">
+                <div class="kpi-title">Legacy / Insecure</div>
+                <div class="kpi-value">1</div>
+                <div class="kpi-desc">MD5, SHA-1, DES/3DES</div>
+            </div>
+        </div>
+
+        <div class="toolbar">
+            <div class="filter-group">
+                <button class="filter-btn active" onclick="filterTable('all')">All Assets (2)</button>
+                <button class="filter-btn" onclick="filterTable('pqc-safe')">Quantum-Resistant (0)</button>
+                <button class="filter-btn" onclick="filterTable('pqc-vuln')">Quantum-Vulnerable (1)</button>
+                <button class="filter-btn" onclick="filterTable('pqc-keystore')">Keystores & Certs (0)</button>
+                <button class="filter-btn" onclick="filterTable('pqc-legacy')">Legacy / Insecure (1)</button>
+            </div>
+            <input type="text" id="searchInput" class="search-input" placeholder="Search modules, algorithms, or files..." onkeyup="searchTable()">
+        </div>
+
+        <div class="table-container">
+            <table id="cbomTable">
+                <thead>
+                    <tr>
+                        <th style="width: 40px; text-align: center;">#</th>
+                        <th>Module</th>
+                        <th>Asset Name</th>
+                        <th>Primitive</th>
+                        <th>Mode</th>
+                        <th>Padding</th>
+                        <th>Security</th>
+                        <th>Post-Quantum Status</th>
+                        <th>Source Location</th>
+                        <th>Code Snippet</th>
+                        <th>Compliance Guidance</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr class="asset-row" data-tag="pqc-vuln">
+                <td style="text-align: center; color: var(--text-muted);">1</td>
+                <td><strong>oauth-authorization-server</strong></td>
+                <td><span class="algo-name">RSA</span></td>
+                <td><span class="primitive-tag">public-key-encryption</span></td>
+                <td>None</td>
+                <td>None</td>
+                <td><strong>2048-bit RSA</strong></td>
+                <td><span class="badge badge-danger">Quantum-Vulnerable (Shor's)</span></td>
+                <td><div class="file-loc">C:/Users/ThirumalM/git/oauth-authorization-server/src/main/java/io/github/thirumalx/config/AuthorizationServerConfig.java<span class="line-num">:354</span></div></td>
+                <td><code class="code-snippet">KeyPairGenerator keyPairGenerator = KeyPairGenerator.getInstance(&quot;RSA&quot;);</code></td>
+                <td><div class="guidance-box">PQC Alert: Asymmetric keys (RSA/ECC) are vulnerable to Shor&#39;s quantum algorithm. Plan transition to Post-Quantum Schemes (ML-KEM / FIPS 203 or ML-DSA / FIPS 204).</div></td>
+            </tr><tr class="asset-row" data-tag="pqc-legacy">
+                <td style="text-align: center; color: var(--text-muted);">2</td>
+                <td><strong>oauth-authorization-server</strong></td>
+                <td><span class="algo-name">HmacSHA1</span></td>
+                <td><span class="primitive-tag">message-authentication-code</span></td>
+                <td>None</td>
+                <td>None</td>
+                <td><strong>Deprecated</strong></td>
+                <td><span class="badge badge-insecure">Legacy / Insecure</span></td>
+                <td><div class="file-loc">C:/Users/ThirumalM/git/oauth-authorization-server/src/main/java/io/github/thirumalx/util/TotpUtil.java<span class="line-num">:67</span></div></td>
+                <td><code class="code-snippet">Mac mac = Mac.getInstance(&quot;HmacSHA1&quot;);</code></td>
+                <td><div class="guidance-box">HIGH RISK: Migrate HMAC to HmacSHA256 or HmacSHA512.</div></td>
+            </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="footer">
+            Enterprise Security & Architecture • Generated by <a href="https://github.com/thirumalx/bom-scanner" target="_blank" style="color: var(--primary); text-decoration: underline; font-weight: 500;">bom-scanner (https://github.com/thirumalx/bom-scanner)</a>
+        </div>
+    </div>
+
+    <script>
+        function filterTable(tag) {
+            document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
+            event.target.classList.add('active');
+
+            const rows = document.querySelectorAll('.asset-row');
+            rows.forEach(row => {
+                if (tag === 'all' || row.getAttribute('data-tag') === tag) {
+                    row.style.display = '';
+                } else {
+                    row.style.display = 'none';
+                }
+            });
+        }
+
+        function searchTable() {
+            const query = document.getElementById('searchInput').value.toLowerCase();
+            const rows = document.querySelectorAll('.asset-row');
+            rows.forEach(row => {
+                const text = row.innerText.toLowerCase();
+                if (text.includes(query)) {
+                    row.style.display = '';
+                } else {
+                    row.style.display = 'none';
+                }
+            });
+        }
+    </script>
+</body>
+</html>

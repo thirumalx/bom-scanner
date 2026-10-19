@@ -1,0 +1,107 @@
+{
+  "$schema": "http://cyclonedx.org/schema/bom-1.6.schema.json",
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.6",
+  "serialNumber": "urn:uuid:1792392594391953100",
+  "version": 1,
+  "metadata": {
+    "timestamp": "2026-10-19T06:49:54.390784600+00:00",
+    "component": {
+      "bom-ref": "pkg:generic/oauth-authorization-server@1.0.0",
+      "type": "application",
+      "name": "oauth-authorization-server",
+      "version": "1.0.0"
+    }
+  },
+  "components": [
+    {
+      "bom-ref": "oauth-authorization-server-crypto-1",
+      "type": "cryptographic-asset",
+      "name": "RSA",
+      "version": "2048-bit RSA",
+      "description": "PQC Alert: Asymmetric keys (RSA/ECC) are vulnerable to Shor's quantum algorithm. Plan transition to Post-Quantum Schemes (ML-KEM / FIPS 203 or ML-DSA / FIPS 204).",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "public-key-encryption",
+          "parameterSetIdentifier": "2048-bit RSA",
+          "classicalSecurityLevel": 112,
+          "nistQuantumSecurityLevel": 0
+        },
+        "detectionContext": {
+          "filePath": "C:/Users/ThirumalM/git/oauth-authorization-server/src/main/java/io/github/thirumalx/config/AuthorizationServerConfig.java",
+          "lineNumber": 354,
+          "snippet": "KeyPairGenerator keyPairGenerator = KeyPairGenerator.getInstance(\"RSA\");",
+          "postQuantumRisk": "Quantum-Vulnerable (Shor's Algorithm)"
+        }
+      },
+      "properties": [
+        {
+          "name": "cbom:pqcRisk",
+          "value": "Quantum-Vulnerable (Shor's Algorithm)"
+        },
+        {
+          "name": "cbom:primitive",
+          "value": "public-key-encryption"
+        },
+        {
+          "name": "cbom:classicalSecurity",
+          "value": "2048-bit RSA"
+        },
+        {
+          "name": "cbom:sourceLocation",
+          "value": "C:/Users/ThirumalM/git/oauth-authorization-server/src/main/java/io/github/thirumalx/config/AuthorizationServerConfig.java:354"
+        }
+      ]
+    },
+    {
+      "bom-ref": "oauth-authorization-server-crypto-2",
+      "type": "cryptographic-asset",
+      "name": "HmacSHA1",
+      "version": "Deprecated",
+      "description": "HIGH RISK: Migrate HMAC to HmacSHA256 or HmacSHA512.",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "message-authentication-code",
+          "parameterSetIdentifier": "Deprecated",
+          "classicalSecurityLevel": 128,
+          "nistQuantumSecurityLevel": 3
+        },
+        "detectionContext": {
+          "filePath": "C:/Users/ThirumalM/git/oauth-authorization-server/src/main/java/io/github/thirumalx/util/TotpUtil.java",
+          "lineNumber": 67,
+          "snippet": "Mac mac = Mac.getInstance(\"HmacSHA1\");",
+          "postQuantumRisk": "Legacy / Insecure"
+        }
+      },
+      "properties": [
+        {
+          "name": "cbom:pqcRisk",
+          "value": "Legacy / Insecure"
+        },
+        {
+          "name": "cbom:primitive",
+          "value": "message-authentication-code"
+        },
+        {
+          "name": "cbom:classicalSecurity",
+          "value": "Deprecated"
+        },
+        {
+          "name": "cbom:sourceLocation",
+          "value": "C:/Users/ThirumalM/git/oauth-authorization-server/src/main/java/io/github/thirumalx/util/TotpUtil.java:67"
+        }
+      ]
+    }
+  ],
+  "dependencies": [
+    {
+      "ref": "pkg:generic/oauth-authorization-server@1.0.0",
+      "dependsOn": [
+        "oauth-authorization-server-crypto-1",
+        "oauth-authorization-server-crypto-2"
+      ]
+    }
+  ]
+}

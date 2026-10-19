@@ -31,13 +31,13 @@ Compliant with:
 ├── sbom/                          # Software Bill of Materials & Security Findings
 │   ├── CycloneDX/                 # CycloneDX v1.7 SBOMs (*.cdx.json) with vuln, misconfig, secrets, licenses
 │   ├── SPDX/                      # SPDX-JSON SBOMs (*.spdx.json) ISO/IEC 5230 compliant
-│   ├── HTML/                      # Interactive visual HTML vulnerability reports (*.html)
+│   ├── HTML/                      # Interactive visual HTML vulnerability reports (*.html, with attribution)
 │   ├── JSON/                      # Comprehensive Trivy JSON telemetry (--list-all-pkgs) (*.json)
-│   └── SBOM_Executive_Summary.csv # Consolidated executive register across all modules (CVEs, misconfigs, secrets)
+│   └── SBOM_Executive_Summary.xlsx # Formatted executive Excel workbook (with attribution)
 └── cbom/                          # Cryptographic Bill of Materials & PQC Governance
     ├── Executive/                 # Consolidated enterprise-wide governance artifacts
-    │   ├── CBOM_Executive_Dashboard.html # Consolidated enterprise-wide visual CBOM dashboard
-    │   └── CBOM_Executive_Register.csv   # Consolidated register of all algorithms, modes, keys, and PQC risks
+    │   ├── CBOM_Executive_Dashboard.html # Consolidated enterprise-wide visual CBOM dashboard (with attribution)
+    │   └── CBOM_Executive_Register.xlsx  # Formatted executive Excel workbook (with attribution)
     ├── <module>.cbom.json         # CycloneDX v1.6 Cryptographic Bills of Materials
     └── <module>.html              # Interactive visual CBOM reports with code snippets & remediation
 ```
@@ -90,7 +90,11 @@ ARGUMENTS:
 
 OPTIONS:
     -s, --source <PATH>     Specify source directory containing project modules (default: /opt/repository)
+    -m, --module <NAME>     Scan only the specified module by name or directory
     -o, --output <PATH>     Specify base output directory (creates <PATH>/sbom and <PATH>/cbom)
+    --sbom-only             Generate only Software Bill of Materials (SBOM) & CVE assessments
+    --cbom-only             Generate only Cryptographic Bill of Materials (CBOM) & PQC analysis
+    --bom <TYPE>            Specify BOM generation type: sbom, cbom, or all (default: all)
     --sbom-dir <PATH>       Specify custom directory for SBOM reports (default: /opt/bom/sbom)
     --cbom-dir <PATH>       Specify custom directory for CBOM reports (default: /opt/bom/cbom)
     -t, --trivy <PATH>      Specify path to trivy executable (auto-installed if omitted)
@@ -105,21 +109,50 @@ OPTIONS:
 
 ### Examples
 
-#### 1. Interactive setup:
+#### 1. Interactive setup (Guided Wizard):
 ```cmd
 bom-scanner.exe
 ```
+Prompts for module selection (or 'all') and target BOM type (`all`, `sbom`, or `cbom`).
 
-#### 2. Default run with `/opt` defaults:
+#### 2. Scan only a single module from a multi-module repository:
 ```bash
-./bom-scanner -y
+# Scan a specific module for both SBOM & CBOM
+bom-scanner -s /opt/repository -m PaymentService -o /opt/bom
+
+# Or point directly to the module directory as source:
+bom-scanner -s /opt/repository/PaymentService -o /opt/bom
 ```
 
-#### 3. Custom paths:
+#### 3. Scan only CBOM (Cryptographic Bill of Materials & PQC):
+Runs purely using the internal Rust regex & keystore discovery engine in milliseconds (bypasses Trivy download & scans completely):
 ```bash
-./bom-scanner -s "/path/to/source" -o "/path/to/output"
+# All modules, CBOM only
+bom-scanner -s /opt/repository --cbom-only -o /opt/bom
+
+# Single module, CBOM only (lightning-fast)
+bom-scanner -s /opt/repository -m PaymentService --cbom-only -o /opt/bom
 ```
-*(This automatically writes SBOMs to `/path/to/output/sbom` and CBOMs to `/path/to/output/cbom`.)*
+
+#### 4. Scan only SBOM (Software Bill of Materials & Security Findings):
+```bash
+# All modules, SBOM only
+bom-scanner -s /opt/repository --sbom-only -o /opt/bom
+
+# Single module, SBOM only
+bom-scanner -s /opt/repository -m PaymentService --sbom-only -o /opt/bom
+```
+
+#### 5. Default run with `/opt` defaults in batch mode:
+```bash
+bom-scanner -y
+```
+
+#### 6. Custom paths:
+```bash
+bom-scanner -s "/path/to/source" -o "/path/to/output"
+```
+*(Automatically creates `/path/to/output/sbom` and `/path/to/output/cbom`.)*
 
 ---
 
@@ -142,3 +175,20 @@ curl -X POST "http://<dependency-track-host>:8081/api/v1/bom" \
 
 ### 2. Ingesting CycloneDX 1.6 CBOMs
 The files in `/opt/bom/cbom/<module>.cbom.json` conform to the CycloneDX 1.6 Cryptography Extension specification (`cryptoProperties`) and can be ingested directly into Dependency-Track or IBM CBOMkit viewers.
+
+
+## Sample Output
+
+[sample-output](sample-output/)
+  [sample-output/cbom/](sample-output/cbom/)
+      [sample-output/cbom/oauth-authorization-server.html](sample-output/cbom/oauth-authorization-server.html)
+      [](sample-output/cbom/oauth-authorization-server.cbom.json)
+      [](sample-output/cbom/Executive/)
+        [](sample-output/cbom/Executive/CBOM_Executive_Dashboard.html)
+        [](sample-output/cbom/Executive/CBOM_Executive_Register.xlsx)
+  [](sample-output/sbom/)
+    [](sample-output/sbom/CycloneDX/oauth-authorization-server.cdx.json)
+    [](sample-output/sbom/HTML/oauth-authorization-server.html)
+    [](sample-output/sbom/JSON/oauth-authorization-server.json)
+    [](sample-output/sbom/SBOM_Executive_Summary.xlsx)
+    [](sample-output/sbom/SPDX/oauth-authorization-server.spdx.json) 
