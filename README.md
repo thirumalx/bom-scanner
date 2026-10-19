@@ -179,16 +179,22 @@ The files in `/opt/bom/cbom/<module>.cbom.json` conform to the CycloneDX 1.6 Cry
 
 ## Sample Output
 
-[sample-output](sample-output/)
-  [sample-output/cbom/](sample-output/cbom/)
-      [sample-output/cbom/oauth-authorization-server.html](sample-output/cbom/oauth-authorization-server.html)
-      [](sample-output/cbom/oauth-authorization-server.cbom.json)
-      [](sample-output/cbom/Executive/)
-        [](sample-output/cbom/Executive/CBOM_Executive_Dashboard.html)
-        [](sample-output/cbom/Executive/CBOM_Executive_Register.xlsx)
-  [](sample-output/sbom/)
-    [](sample-output/sbom/CycloneDX/oauth-authorization-server.cdx.json)
-    [](sample-output/sbom/HTML/oauth-authorization-server.html)
-    [](sample-output/sbom/JSON/oauth-authorization-server.json)
-    [](sample-output/sbom/SBOM_Executive_Summary.xlsx)
-    [](sample-output/sbom/SPDX/oauth-authorization-server.spdx.json) 
+## Sample Output Structure
+
+- [`sample-output/`](sample-output/)
+  - [`cbom/`](sample-output/cbom/)
+    - [`oauth-authorization-server.html`](sample-output/cbom/oauth-authorization-server.html)
+    - [`oauth-authorization-server.cbom.json`](sample-output/cbom/oauth-authorization-server.cbom.json)
+    - `Executive/`
+      - [`CBOM_Executive_Dashboard.html`](sample-output/cbom/Executive/CBOM_Executive_Dashboard.html)
+      - [`CBOM_Executive_Register.xlsx`](sample-output/cbom/Executive/CBOM_Executive_Register.xlsx)
+  - `sbom/`
+    - `CycloneDX/`
+      - [`oauth-authorization-server.cdx.json`](sample-output/sbom/CycloneDX/oauth-authorization-server.cdx.json)
+    - `HTML/`
+      - [`oauth-authorization-server.html`](sample-output/sbom/HTML/oauth-authorization-server.html)
+    - `JSON/`
+      - [`oauth-authorization-server.json`](sample-output/sbom/JSON/oauth-authorization-server.json)
+    - [`SBOM_Executive_Summary.xlsx`](sample-output/sbom/SBOM_Executive_Summary.xlsx)
+    - `SPDX/`
+      - [`oauth-authorization-server.spdx.json`](sample-output/sbom/SPDX/oauth-authorization-server.spdx.json)
