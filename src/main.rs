@@ -1,4 +1,5 @@
 mod cbom;
+mod cert_in;
 
 use chrono::Local;
 use rust_xlsxwriter::{Color, Format, FormatUnderline, Workbook};
@@ -230,6 +231,8 @@ struct SummaryRecord {
     licenses_count: usize,
     #[serde(rename = "Crypto Assets Count")]
     crypto_assets_count: usize,
+    #[serde(rename = "CERT-In SBOM Report")]
+    cert_in_file: String,
     #[serde(rename = "CycloneDX SBOM File")]
     cyclonedx_file: String,
     #[serde(rename = "SPDX SBOM File")]
@@ -510,6 +513,9 @@ OPTIONS:
 OUTPUT DIRECTORY STRUCTURE:
     /opt/bom/
     ├── sbom/                     # Software Bill of Materials & Security Findings
+    │   ├── CERT-In/              # CERT-In 21-Field Compliant SBOM Reports & Executive Dashboard
+    │   │   ├── CERT-In_Executive_SBOM.html # Consolidated enterprise CERT-In dashboard
+    │   │   └── <module>.cert-in.html       # Interactive 21-field visual SBOM report & CSV export
     │   ├── CycloneDX/            # CycloneDX v1.7 JSON SBOMs (vuln, misconfig, secret, license)
     │   ├── SPDX/                 # SPDX-JSON SBOMs (ISO/IEC 5230 Standard)
     │   ├── HTML/                 # Visual vulnerability reports (<module>.html, with attribution)
@@ -940,6 +946,7 @@ fn export_sbom_summary_xlsx(
         "Secrets Exposed",
         "Licenses Tracked",
         "Crypto Assets Count",
+        "CERT-In SBOM Report",
         "CycloneDX SBOM File",
         "SPDX SBOM File",
         "HTML Report File",
@@ -968,15 +975,16 @@ fn export_sbom_summary_xlsx(
         worksheet.write_number(r, 8, rec.secrets_count as f64)?;
         worksheet.write_number(r, 9, rec.licenses_count as f64)?;
         worksheet.write_number(r, 10, rec.crypto_assets_count as f64)?;
-        worksheet.write_string(r, 11, &rec.cyclonedx_file)?;
-        worksheet.write_string(r, 12, &rec.spdx_file)?;
-        worksheet.write_string(r, 13, &rec.html_file)?;
-        worksheet.write_string(r, 14, &rec.json_file)?;
-        worksheet.write_string(r, 15, &rec.cbom_file)?;
-        worksheet.write_string(r, 16, &rec.cbom_html_file)?;
-        worksheet.write_string(r, 17, &rec.timestamp)?;
-        worksheet.write_string(r, 18, &rec.status)?;
-        worksheet.write_string(r, 19, &rec.generated_by)?;
+        worksheet.write_string(r, 11, &rec.cert_in_file)?;
+        worksheet.write_string(r, 12, &rec.cyclonedx_file)?;
+        worksheet.write_string(r, 13, &rec.spdx_file)?;
+        worksheet.write_string(r, 14, &rec.html_file)?;
+        worksheet.write_string(r, 15, &rec.json_file)?;
+        worksheet.write_string(r, 16, &rec.cbom_file)?;
+        worksheet.write_string(r, 17, &rec.cbom_html_file)?;
+        worksheet.write_string(r, 18, &rec.timestamp)?;
+        worksheet.write_string(r, 19, &rec.status)?;
+        worksheet.write_string(r, 20, &rec.generated_by)?;
     }
 
     worksheet.autofit();
@@ -1103,6 +1111,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let spdx_dir = config.sbom_dir.join("SPDX");
     let html_dir = config.sbom_dir.join("HTML");
     let json_dir = config.sbom_dir.join("JSON");
+    let cert_in_dir = config.sbom_dir.join("CERT-In");
     let cbom_exec_dir = config.cbom_dir.join("Executive");
 
     if config.scan_type != ScanType::CbomOnly {
@@ -1110,6 +1119,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         fs::create_dir_all(&spdx_dir)?;
         fs::create_dir_all(&html_dir)?;
         fs::create_dir_all(&json_dir)?;
+        fs::create_dir_all(&cert_in_dir)?;
     }
     if config.scan_type != ScanType::SbomOnly {
         fs::create_dir_all(&config.cbom_dir)?;
@@ -1118,6 +1128,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut summary_records: Vec<SummaryRecord> = Vec::with_capacity(total_modules);
     let mut all_crypto_assets: Vec<cbom::CryptoAsset> = Vec::new();
+    let mut all_cert_in_components = Vec::new();
+    let mut all_cert_in_summaries = Vec::new();
 
     let mut total_deps_all = 0usize;
     let mut total_critical_all = 0usize;
@@ -1150,6 +1162,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let spdx_file_name = format!("{}.spdx.json", module_name);
         let html_file_name = format!("{}.html", module_name);
         let json_file_name = format!("{}.json", module_name);
+        let cert_in_file_name = format!("{}.cert-in.html", module_name);
         let cbom_file_name = format!("{}.cbom.json", module_name);
         let cbom_html_file_name = format!("{}.html", module_name);
 
@@ -1157,6 +1170,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let spdx_output = spdx_dir.join(&spdx_file_name);
         let html_output = html_dir.join(&html_file_name);
         let json_output = json_dir.join(&json_file_name);
+        let cert_in_output = cert_in_dir.join(&cert_in_file_name);
         let cbom_output = config.cbom_dir.join(&cbom_file_name);
         let cbom_html_output = config.cbom_dir.join(&cbom_html_file_name);
 
@@ -1334,6 +1348,65 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             all_crypto_assets.extend(crypto_assets);
         }
 
+        // 6. Generate CERT-In 21-Field Compliant SBOM Report
+        if config.scan_type != ScanType::CbomOnly && cdx_output.exists() {
+            match cert_in::parse_cyclonedx_for_cert_in(&cdx_output, &module_name) {
+                Ok(comps) => {
+                    let html_content = cert_in::generate_cert_in_html_report(&module_name, &comps);
+                    let _ = fs::write(&cert_in_output, html_content);
+
+                    let mut mod_vulns = 0usize;
+                    let mut mod_crit = 0usize;
+                    let mut mod_high = 0usize;
+                    let mut mod_med = 0usize;
+                    let mut mod_low = 0usize;
+                    let mut mod_oss = 0usize;
+                    let mut mod_prop = 0usize;
+                    let mut mod_copyleft = 0usize;
+
+                    for c in &comps {
+                        if c.is_vulnerable {
+                            mod_vulns += 1;
+                        }
+                        match c.max_severity.as_str() {
+                            "CRITICAL" => mod_crit += 1,
+                            "HIGH" => mod_high += 1,
+                            "MEDIUM" => mod_med += 1,
+                            "LOW" => mod_low += 1,
+                            _ => {}
+                        }
+                        if c.origin.contains("Open Source") {
+                            mod_oss += 1;
+                        } else {
+                            mod_prop += 1;
+                        }
+                        if c.license_category == "Copyleft" {
+                            mod_copyleft += 1;
+                        }
+                    }
+
+                    all_cert_in_summaries.push(cert_in::CertInModuleSummary {
+                        module_name: module_name.clone(),
+                        total_components: comps.len(),
+                        vulnerable_components: mod_vulns,
+                        clean_components: comps.len().saturating_sub(mod_vulns),
+                        critical_vulns: mod_crit,
+                        high_vulns: mod_high,
+                        medium_vulns: mod_med,
+                        low_vulns: mod_low,
+                        open_source_count: mod_oss,
+                        proprietary_count: mod_prop,
+                        copyleft_count: mod_copyleft,
+                        report_file: cert_in_file_name.clone(),
+                    });
+                    all_cert_in_components.extend(comps);
+                }
+                Err(e) => {
+                    eprintln!(" [WARN] Failed to generate CERT-In SBOM for {}: {}", module_name, e);
+                }
+            }
+        }
+
         // Parse JSON output to aggregate dependency counts, CVEs, misconfigs, secrets & licenses
         let mut unique_packages: HashSet<String> = HashSet::new();
         let mut unique_vulns: HashMap<String, String> = HashMap::new();
@@ -1469,6 +1542,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             secrets_count: secret_count,
             licenses_count: license_count,
             crypto_assets_count: crypto_count,
+            cert_in_file: if config.scan_type != ScanType::CbomOnly { format!("CERT-In/{}", cert_in_file_name) } else { "N/A (CBOM-only scan)".to_string() },
             cyclonedx_file: if config.scan_type != ScanType::CbomOnly { format!("CycloneDX/{}", cdx_file_name) } else { "N/A (CBOM-only scan)".to_string() },
             spdx_file: if config.scan_type != ScanType::CbomOnly { format!("SPDX/{}", spdx_file_name) } else { "N/A (CBOM-only scan)".to_string() },
             html_file: if config.scan_type != ScanType::CbomOnly { format!("HTML/{}", html_file_name) } else { "N/A (CBOM-only scan)".to_string() },
@@ -1485,6 +1559,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let summary_xlsx_path = config.sbom_dir.join("SBOM_Executive_Summary.xlsx");
     if config.scan_type != ScanType::CbomOnly {
         let _ = export_sbom_summary_xlsx(&summary_xlsx_path, &summary_records);
+    }
+
+    // Export Consolidated CERT-In Executive Dashboard
+    let cert_in_dashboard_path = cert_in_dir.join("CERT-In_Executive_SBOM.html");
+    if config.scan_type != ScanType::CbomOnly && !all_cert_in_summaries.is_empty() {
+        let cert_in_dashboard_html = cert_in::generate_executive_cert_in_dashboard(
+            &all_cert_in_summaries,
+            &all_cert_in_components,
+        );
+        let _ = fs::write(&cert_in_dashboard_path, cert_in_dashboard_html);
     }
 
     // Export Comprehensive CBOM Executive Register Excel in CBOM Executive directory
@@ -1554,6 +1638,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     if config.scan_type != ScanType::CbomOnly {
         println!("   • SBOM Directory              : {}", config.sbom_dir.display());
+        println!("     ├── CERT-In 21-Field Reports: {}", cert_in_dir.display());
+        println!("     │   ├── Executive Dashboard : {}", cert_in_dashboard_path.display());
+        println!("     │   └── Module Reports (*.cert-in.html)");
         println!("     ├── CycloneDX SBOMs         : {}", cyclonedx_dir.display());
         println!("     ├── SPDX SBOMs (ISO/IEC 5230): {}", spdx_dir.display());
         println!("     ├── HTML Visual Reports     : {}", html_dir.display());

@@ -29,6 +29,9 @@ Compliant with:
 ```
 /opt/bom/
 ├── sbom/                          # Software Bill of Materials & Security Findings
+│   ├── CERT-In/                   # CERT-In 21-Field Compliant SBOM Reports & Executive Dashboard
+│   │   ├── CERT-In_Executive_SBOM.html # Consolidated enterprise-wide visual CERT-In dashboard
+│   │   └── <module>.cert-in.html       # Interactive 21-field visual SBOM report & CSV export
 │   ├── CycloneDX/                 # CycloneDX v1.7 SBOMs (*.cdx.json) with vuln, misconfig, secrets, licenses
 │   ├── SPDX/                      # SPDX-JSON SBOMs (*.spdx.json) ISO/IEC 5230 compliant
 │   ├── HTML/                      # Interactive visual HTML vulnerability reports (*.html, with attribution)
@@ -71,6 +74,7 @@ Compliant with:
 
 ### Interactive Mode (Default when run without arguments)
 When run without parameters, `bom-scanner` presents a guided configuration wizard pre-populated with `/opt` defaults:
+
 ```cmd
 D:\git-repo\bom-scanner\target\release\bom-scanner.exe
 ```
@@ -110,6 +114,7 @@ OPTIONS:
 ### Examples
 
 #### 1. Interactive setup (Guided Wizard):
+
 ```cmd
 bom-scanner.exe
 ```
@@ -177,7 +182,47 @@ curl -X POST "http://<dependency-track-host>:8081/api/v1/bom" \
 The files in `/opt/bom/cbom/<module>.cbom.json` conform to the CycloneDX 1.6 Cryptography Extension specification (`cryptoProperties`) and can be ingested directly into Dependency-Track or IBM CBOMkit viewers.
 
 
-## Sample Output
+## CERT-In 21-Field SBOM Compliance
+
+`bom-scanner` automatically generates CERT-In compliant visual HTML reports and audit-ready CSV exports populated with all **21 mandatory fields** mandated by the **Indian Computer Emergency Response Team (CERT-In)** for software supply chain security:
+
+| Sl.No | Field Name | Description & Regulatory Purpose | Source Mapping in `bom-scanner` |
+|:-----:|:-----------|:---------------------------------|:--------------------------------|
+| **1** | **Component Name** | The name of the software component or library included in the SBOM. | Extracted from `component.name` (Maven artifactId, NPM package name). |
+| **2** | **Component Version** | The version number or identifier of the software component. | Extracted from `component.version` (Semantic version / snapshot). |
+| **3** | **Component Description** | A brief description or summary of the functionality and purpose of the software component. | Extracted from `component.description` or contextual framework descriptor. |
+| **4** | **Component Supplier** | The entity or organization that supplied the software component (vendor, supplier, or OSS project). | Mapped from `supplier.name`, `component.group`, or verified upstream ecosystem. |
+| **5** | **Component License** | The license under which the software component is distributed (license type, terms, restrictions). | Resolved from `component.licenses[]` (e.g. Apache-2.0, MIT, BSD-3-Clause, EPL-2.0). |
+| **6** | **Component Origin** | Source or origin (proprietary, in-house, open-source, or third-party vendor). | Evaluated via Package URL ecosystem (`pkg:maven`, `pkg:npm`, internal group). |
+| **7** | **Component Dependencies** | Software components or libraries that the current component depends on (names & versions). | Extracted from CycloneDX `dependencies[].dependsOn` dependency tree mapping. |
+| **8** | **Vulnerabilities** | Known security vulnerabilities or weaknesses (CVE ID, severity, CVSS scores, advisories). | Correlated from Trivy vulnerability engine (`vulnerabilities[]` & NVD/GHSA). |
+| **9** | **Patch Status** | Update status of the software component, indicating whether patches are available to address known issues. | Computed from `vulnerability.recommendation` and fixed version catalogs. |
+| **10** | **Release Date** | The date when the software component was released or made available for use. | Derived from component release baseline version & registry metadata. |
+| **11** | **End-of-Life (EOL) Date** | Date when support or maintenance is scheduled to end, indicating the end of lifecycle. | Tracked via upstream maintenance lifecycle status (`Active / Maintained`). |
+| **12** | **Criticality** | Importance to the overall functionality or security of the application (Critical, High, Medium, Low). | Risk-scored based on CVSS severity, runtime exploitability, and core vs transitive role. |
+| **13** | **Usage Restrictions** | Restrictions or limitations (e.g., reciprocal copyleft terms, commercial constraints, export controls). | Automatically classified based on license category (Permissive vs Reciprocal Copyleft). |
+| **14** | **Checksums or Hashes** | Cryptographic checksums or hashes of software component files for integrity and authenticity. | Extracted from `component.hashes[]` (SHA-256 / SHA-1) or package registry digest. |
+| **15** | **Comments or Notes** | Additional comments, notes, or annotations relevant to the software component. | Contextual scanner auditing notes, package manager, and scan scope. |
+| **16** | **Author of SBOM Data** | The name of the entity that creates the SBOM data for this component. | Standardized as `Aqua Security Trivy & bom-scanner Engine (thirumalx/bom-scanner)`. |
+| **17** | **Timestamp** | Record of the date and time of the SBOM data assembly. | ISO 8601 assembly timestamp recorded at time of SBOM compilation. |
+| **18** | **Executable Property** | Attributes indicating whether a component within an SBOM can be executed. | Categorized by execution model (Standalone Executable, JVM Bytecode, Node.js). |
+| **19** | **Archive Property** | Characteristics denoting if a component is stored as an archive or compressed file. | Categorized by packaging structure (JAR/WAR Archive, TGZ Tarball, Flat Manifest). |
+| **20** | **Structured Property** | Descriptors defining the organized format of data within a component listed in an SBOM. | Structural format descriptors (JVM Bytecode Archive, Node.js Module, XML POM). |
+| **21** | **Unique Identifier** | Distinct code assigned to each software component ensuring accurate tracking and management. | Standard Package URL (`purl`, e.g., `pkg:maven/group/artifact@version`) or `bom-ref`. |
+
+### Generated CERT-In HTML Artifacts
+1. **Module Reports (`/opt/bom/sbom/CERT-In/<module>.cert-in.html`)**:
+   * Interactive 21-column data table with sticky headers.
+   * Executive KPI metric cards (Total Components, Clean vs Vulnerable, Critical/High CVEs, Open Source vs Proprietary).
+   * Real-time search and filter controls (All, Vulnerable Only, Critical & High, Clean).
+   * **1-Click RFC-4180 CSV Export**: Generates a standard `.csv` spreadsheet with all 21 CERT-In fields for regulatory submission.
+   * Print-ready stylesheet for PDF generation.
+2. **Executive Consolidated Dashboard (`/opt/bom/sbom/CERT-In/CERT-In_Executive_SBOM.html`)**:
+   * Enterprise-wide roll-up across all scanned modules.
+   * Portfolio compliance statistics and vulnerability matrix.
+   * 1-Click export of the entire enterprise portfolio into a unified 21-field CSV.
+
+---
 
 ## Sample Output Structure
 
@@ -189,6 +234,9 @@ The files in `/opt/bom/cbom/<module>.cbom.json` conform to the CycloneDX 1.6 Cry
       - [`CBOM_Executive_Dashboard.html`](sample-output/cbom/Executive/CBOM_Executive_Dashboard.html)
       - [`CBOM_Executive_Register.xlsx`](sample-output/cbom/Executive/CBOM_Executive_Register.xlsx)
   - `sbom/`
+    - `CERT-In/`
+      - [`CERT-In_Executive_SBOM.html`](sample-output/sbom/CERT-In/CERT-In_Executive_SBOM.html)
+      - [`oauth-authorization-server.cert-in.html`](sample-output/sbom/CERT-In/oauth-authorization-server.cert-in.html)
     - `CycloneDX/`
       - [`oauth-authorization-server.cdx.json`](sample-output/sbom/CycloneDX/oauth-authorization-server.cdx.json)
     - `HTML/`
