@@ -1,5 +1,6 @@
 mod cbom;
 mod cert_in;
+mod cert_scanner;
 
 use chrono::Local;
 use rust_xlsxwriter::{Color, Format, FormatUnderline, Workbook};
@@ -154,6 +155,7 @@ struct Config {
     trivy_path: PathBuf,
     template_path: PathBuf,
     offline: bool,
+    timeout: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -504,7 +506,8 @@ OPTIONS:
     -t, --trivy <PATH>      Specify path to trivy executable (auto-installed if omitted)
     --template <PATH>       Specify path to HTML report template (default: /opt/html.tpl, auto-embedded)
     --offline               Run in offline mode using local DB without remote repo queries (default)
-    --online                Allow remote Maven repository queries (may trigger rate limits)
+    --online                Allow remote Maven repository queries (with automatic offline fallback)
+    --timeout <DURATION>    Network timeout for remote repository queries (default: 3m)
     -i, --interactive       Force interactive configuration wizard
     -y, --batch             Non-interactive batch mode (accept all defaults without prompt)
     -h, --help              Print this help information
@@ -543,6 +546,7 @@ fn parse_args() -> Result<Option<Config>, String> {
     let mut trivy_opt: Option<PathBuf> = None;
     let mut tpl_opt: Option<PathBuf> = None;
     let mut offline = true;
+    let mut timeout_opt: Option<String> = None;
     let mut force_interactive = false;
     let mut force_batch = false;
 
@@ -621,6 +625,12 @@ fn parse_args() -> Result<Option<Config>, String> {
             offline = true;
         } else if arg == "--online" {
             offline = false;
+        } else if arg == "--timeout" {
+            i += 1;
+            if i >= args.len() {
+                return Err("Missing argument for --timeout".to_string());
+            }
+            timeout_opt = Some(args[i].clone());
         } else if !arg.starts_with('-') {
             positional.push(PathBuf::from(arg));
         } else {
@@ -714,15 +724,24 @@ fn parse_args() -> Result<Option<Config>, String> {
             default_cbom
         };
 
-        // 6. Scan Mode
-        let is_offline = if resolved_scan_type != ScanType::CbomOnly {
+        // 6. Scan Mode & Timeout
+        let (is_offline, resolved_timeout) = if resolved_scan_type != ScanType::CbomOnly {
             let offline_str = prompt_line(
-                " [6/6] Run in offline mode (recommended, prevents rate limits)? [Y/n]",
+                " [6/6] Run in offline mode (recommended, prevents rate limits & network hangs)? [Y/n]",
                 Some("Y"),
             );
-            !offline_str.trim().eq_ignore_ascii_case("n")
+            let off = !offline_str.trim().eq_ignore_ascii_case("n");
+            let tout = if !off {
+                prompt_line(
+                    "       Network timeout for remote repository queries (e.g. 2m, 3m, 5m)",
+                    Some("3m"),
+                )
+            } else {
+                timeout_opt.clone().unwrap_or_else(|| "3m".to_string())
+            };
+            (off, tout)
         } else {
-            true
+            (true, "3m".to_string())
         };
 
         println!();
@@ -749,11 +768,13 @@ fn parse_args() -> Result<Option<Config>, String> {
             trivy_path,
             template_path: resolved_tpl,
             offline: is_offline,
+            timeout: resolved_timeout,
         }));
     }
 
     // Non-interactive (CLI flags provided or --batch specified)
     let source_dir = source_opt.unwrap_or_else(default_source_dir);
+    let timeout = timeout_opt.unwrap_or_else(|| "3m".to_string());
 
     let (sbom_dir, cbom_dir) = match (sbom_opt, cbom_opt) {
         (Some(s), Some(c)) => (s, c),
@@ -789,6 +810,7 @@ fn parse_args() -> Result<Option<Config>, String> {
         trivy_path,
         template_path,
         offline,
+        timeout,
     }))
 }
 
@@ -907,6 +929,91 @@ fn extract_error(stderr_bytes: &[u8]) -> String {
         .unwrap_or("Scan failed")
         .trim()
         .to_string()
+}
+
+fn run_trivy_command(
+    trivy_path: &Path,
+    extra_args: &[&str],
+    module_path: &Path,
+    offline: bool,
+    timeout: &str,
+    module_name: &str,
+    step_name: &str,
+) -> Result<(), String> {
+    let mut cmd = Command::new(trivy_path);
+    cmd.arg("fs");
+    cmd.args(["--timeout", timeout]);
+    if offline {
+        cmd.arg("--offline-scan");
+    }
+    cmd.args([
+        "--scanners",
+        "vuln,misconfig,secret,license",
+        "--detection-priority",
+        "comprehensive",
+        "--severity",
+        "UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL",
+        "--parallel",
+        "0",
+        "--skip-version-check",
+    ]);
+    cmd.args(extra_args);
+    cmd.arg(module_path);
+
+    let output = cmd.output().map_err(|e| format!("{} Launch Failed: {}", step_name, e))?;
+
+    if output.status.success() {
+        return Ok(());
+    }
+
+    let err_msg = extract_error(&output.stderr);
+
+    // If online scan failed (network timeout, unreachable host, rate limits 429, dial tcp, etc.),
+    // automatically fall back to offline mode using local vulnerability database so the scan never fails
+    if !offline {
+        let stderr_str = String::from_utf8_lossy(&output.stderr);
+        let is_network_error = stderr_str.contains("dial tcp")
+            || stderr_str.contains("lookup")
+            || stderr_str.contains("timeout")
+            || stderr_str.contains("context deadline exceeded")
+            || stderr_str.contains("429")
+            || stderr_str.contains("connection refused")
+            || stderr_str.contains("failed to download")
+            || stderr_str.contains("Failed to download");
+
+        if is_network_error {
+            println!("\n   [WARN] {} online scan encountered network issue ({}); falling back to offline database for module '{}'...", step_name, err_msg, module_name);
+            let mut fallback_cmd = Command::new(trivy_path);
+            fallback_cmd.arg("fs");
+            fallback_cmd.args(["--timeout", timeout, "--offline-scan"]);
+            fallback_cmd.args([
+                "--scanners",
+                "vuln,misconfig,secret,license",
+                "--detection-priority",
+                "comprehensive",
+                "--severity",
+                "UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL",
+                "--parallel",
+                "0",
+                "--skip-version-check",
+            ]);
+            fallback_cmd.args(extra_args);
+            fallback_cmd.arg(module_path);
+
+            let fallback_output = fallback_cmd
+                .output()
+                .map_err(|e| format!("{} Offline Fallback Launch Failed: {}", step_name, e))?;
+
+            if fallback_output.status.success() {
+                return Ok(());
+            } else {
+                let fb_err = extract_error(&fallback_output.stderr);
+                return Err(format!("{} Failed (after offline fallback): {}", step_name, fb_err));
+            }
+        }
+    }
+
+    Err(format!("{} Failed: {}", step_name, err_msg))
 }
 
 fn export_sbom_summary_xlsx(
@@ -1090,11 +1197,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!(
             "   • Scan Mode        : {}",
             if config.offline {
-                "Offline (Protects against 429 rate limits & internal 404s)"
+                "Offline (Uses local DB without remote queries)"
             } else {
-                "Online (Queries remote Maven repositories)"
+                "Online (Queries remote repositories with automatic offline fallback)"
             }
         );
+        println!("   • Scan Timeout     : {}", config.timeout);
     }
     if config.scan_type != ScanType::SbomOnly {
         println!("   • CBOM Directory   : {}", config.cbom_dir.display());
@@ -1178,159 +1286,89 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         if config.scan_type != ScanType::CbomOnly {
             // 1. Generate CycloneDX SBOM (with all scanners & comprehensive priority)
-            let mut cdx_cmd = Command::new(&config.trivy_path);
-            cdx_cmd.arg("fs");
-            if config.offline {
-                cdx_cmd.arg("--offline-scan");
-            }
-            cdx_cmd.args([
-                "--scanners",
-                "vuln,misconfig,secret,license",
-                "--detection-priority",
-                "comprehensive",
-                "--severity",
-                "UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL",
-                "--parallel",
-                "0",
-                "--skip-version-check",
+            let cdx_args = [
                 "--format",
                 "cyclonedx",
                 "--output",
                 cdx_output.to_str().unwrap_or_default(),
-                module_path.to_str().unwrap_or_default(),
-            ]);
-            let cdx_res = cdx_cmd.output();
-
-            match &cdx_res {
-                Ok(out) if !out.status.success() => {
-                    let err = extract_error(&out.stderr);
-                    scan_status = format!("CycloneDX Failed: {}", err);
-                }
-                Err(e) => {
-                    scan_status = format!("CycloneDX Launch Failed: {}", e);
-                }
-                _ => {}
+            ];
+            if let Err(e) = run_trivy_command(
+                &config.trivy_path,
+                &cdx_args,
+                module_path,
+                config.offline,
+                &config.timeout,
+                &module_name,
+                "CycloneDX",
+            ) {
+                scan_status = e;
             }
 
             // 2. Generate SPDX JSON SBOM (ISO/IEC 5230 Standard with comprehensive scanners)
-            let mut spdx_cmd = Command::new(&config.trivy_path);
-            spdx_cmd.arg("fs");
-            if config.offline {
-                spdx_cmd.arg("--offline-scan");
-            }
-            spdx_cmd.args([
-                "--scanners",
-                "vuln,misconfig,secret,license",
-                "--detection-priority",
-                "comprehensive",
-                "--severity",
-                "UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL",
-                "--parallel",
-                "0",
-                "--skip-version-check",
+            let spdx_args = [
                 "--format",
                 "spdx-json",
                 "--output",
                 spdx_output.to_str().unwrap_or_default(),
-                module_path.to_str().unwrap_or_default(),
-            ]);
-            let spdx_res = spdx_cmd.output();
-
-            match &spdx_res {
-                Ok(out) if !out.status.success() => {
-                    if scan_status == "Success" {
-                        let err = extract_error(&out.stderr);
-                        scan_status = format!("SPDX Failed: {}", err);
-                    }
+            ];
+            if let Err(e) = run_trivy_command(
+                &config.trivy_path,
+                &spdx_args,
+                module_path,
+                config.offline,
+                &config.timeout,
+                &module_name,
+                "SPDX",
+            ) {
+                if scan_status == "Success" {
+                    scan_status = e;
                 }
-                Err(e) => {
-                    if scan_status == "Success" {
-                        scan_status = format!("SPDX Launch Failed: {}", e);
-                    }
-                }
-                _ => {}
             }
 
             // 3. Generate Human-Readable HTML report using embedded/configured template
-            let mut html_cmd = Command::new(&config.trivy_path);
-            html_cmd.arg("fs");
-            if config.offline {
-                html_cmd.arg("--offline-scan");
-            }
             let tpl_arg = format!("@{}", config.template_path.display());
-            html_cmd.args([
-                "--scanners",
-                "vuln,misconfig,secret,license",
-                "--detection-priority",
-                "comprehensive",
-                "--severity",
-                "UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL",
-                "--parallel",
-                "0",
-                "--skip-version-check",
+            let html_args = [
                 "--format",
                 "template",
                 "--template",
                 &tpl_arg,
                 "--output",
                 html_output.to_str().unwrap_or_default(),
-                module_path.to_str().unwrap_or_default(),
-            ]);
-            let html_res = html_cmd.output();
-
-            match &html_res {
-                Ok(out) if !out.status.success() => {
-                    if scan_status == "Success" {
-                        let err = extract_error(&out.stderr);
-                        scan_status = format!("HTML Failed: {}", err);
-                    }
+            ];
+            if let Err(e) = run_trivy_command(
+                &config.trivy_path,
+                &html_args,
+                module_path,
+                config.offline,
+                &config.timeout,
+                &module_name,
+                "HTML Report",
+            ) {
+                if scan_status == "Success" {
+                    scan_status = e;
                 }
-                Err(e) => {
-                    if scan_status == "Success" {
-                        scan_status = format!("HTML Launch Failed: {}", e);
-                    }
-                }
-                _ => {}
             }
 
             // 4. Generate JSON Telemetry (with --list-all-pkgs, misconfig, secret & license discovery)
-            let mut json_cmd = Command::new(&config.trivy_path);
-            json_cmd.arg("fs");
-            if config.offline {
-                json_cmd.arg("--offline-scan");
-            }
-            json_cmd.args([
-                "--scanners",
-                "vuln,misconfig,secret,license",
+            let json_args = [
                 "--list-all-pkgs",
-                "--detection-priority",
-                "comprehensive",
-                "--severity",
-                "UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL",
-                "--parallel",
-                "0",
-                "--skip-version-check",
                 "--format",
                 "json",
                 "--output",
                 json_output.to_str().unwrap_or_default(),
-                module_path.to_str().unwrap_or_default(),
-            ]);
-            let json_res = json_cmd.output();
-
-            match &json_res {
-                Ok(out) if !out.status.success() => {
-                    if scan_status == "Success" {
-                        let err = extract_error(&out.stderr);
-                        scan_status = format!("JSON Failed: {}", err);
-                    }
+            ];
+            if let Err(e) = run_trivy_command(
+                &config.trivy_path,
+                &json_args,
+                module_path,
+                config.offline,
+                &config.timeout,
+                &module_name,
+                "JSON Telemetry",
+            ) {
+                if scan_status == "Success" {
+                    scan_status = e;
                 }
-                Err(e) => {
-                    if scan_status == "Success" {
-                        scan_status = format!("JSON Launch Failed: {}", e);
-                    }
-                }
-                _ => {}
             }
         }
 

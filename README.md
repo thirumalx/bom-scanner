@@ -51,7 +51,11 @@ Compliant with:
 
 ### 1. Software Bill of Materials (SBOM) & Comprehensive Security
 * Scans Maven (`pom.xml`) and Ant (`build.xml`, `.jar`) projects.
-* Runs in **offline mode (`--offline-scan`)** using Trivy's local database to eliminate remote rate limits.
+* **Hybrid Scan Mode & Resilient Execution**:
+  * **Offline Mode (Default, `--offline`)**: Runs using Trivy's local vulnerability database without external network calls, completely eliminating rate limits (HTTP 429) or network latency.
+  * **Online Mode (`--online`)**: Queries remote registries (Maven Central, GitHub Advisories) with an enforced timeout (`--timeout 3m`).
+  * **Automatic Offline Fallback**: If an online scan times out or experiences connectivity disruption, `bom-scanner` automatically logs a warning and seamlessly falls back to the local database to guarantee report completion.
+  * **Private Company JARs**: In-house enterprise dependencies missing from public registries (returning HTTP 404) are ignored gracefully during online queries without breaking the scan, and are automatically identified as `Proprietary / In-House Development` in the CERT-In compliance register.
 * Enabled scanners:
   * `--scanners vuln,misconfig,secret,license`
   * `--list-all-pkgs` (ensures 100% of dependencies are cataloged in telemetry)
@@ -59,11 +63,21 @@ Compliant with:
   * `--severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL`
 
 ### 2. Cryptographic Bill of Materials (CBOM)
-* **Java Cryptography Architecture (JCA) Scanner**:
+* **Java Cryptography Architecture (JCA) Scanner (`src/cbom.rs`)**:
   * Inspects Java source code for calls to `Cipher`, `Signature`, `MessageDigest`, `Mac`, `KeyGenerator`, `KeyPairGenerator`, `SecretKeyFactory`, `KeyAgreement`, `KeyStore`, and `CertificateFactory`.
   * Extracts exact algorithms, modes, and padding schemes (e.g. `AES/CBC/PKCS7Padding`, `RSA/ECB/PKCS1Padding`, `SHA256withRSA`, `AES/GCM/NoPadding`).
-* **Keystore & Certificate Discovery**:
-  * Identifies on-disk keystores (`.jks`, `.p12`, `.pfx`), public certificates (`.cer`, `.crt`, `.pem`), and HSM configs (`sunpkcs11.cfg`).
+* **Dedicated Certificate & Keystore Inspection Engine (`src/cert_scanner.rs`)**:
+  * **X.509 Certificate Deep Inspection (`.cer`, `.crt`, `.pem`, `.p12`, `.pfx`, `.jks`)**:
+    * Zero-dependency pure Rust ASN.1 DER and PEM parser.
+    * Extracts **Subject**, **Issuer**, and specializes in **eMudhra**, **CCA India**, **C-DAC**, and **Protean/NSDL** PKI certificates.
+    * **Lifecycle & Expiry Tracking**: Automatically flags **Expired** certificates (`CRITICAL: Outage Risk`), **Expiring Soon** alerts ($<30$ days), and active validity windows.
+    * **Cryptographic Strength**: Validates RSA key size $\ge 2048$ bits, flags deprecated signature algorithms (e.g. `SHA1withRSA` vs `SHA256withRSA`).
+  * **Keystore Configuration & Integrity Analysis**:
+    * Scans `application.yaml` and `application.properties` for referenced keystores (e.g. `esign.emudhra.keystore.path`).
+    * Validates whether physical keystore files exist on disk or are missing (`CRITICAL: Keystore File Missing`).
+    * Detects insecure placeholder passwords (e.g., `changeit`).
+  * **XML Digital Signature Deprecation Scanner**:
+    * Scans XML digital signing implementations for deprecated `DigestMethod.SHA1` or `SignatureMethod.RSA_SHA1`.
 * **Post-Quantum Cryptography (PQC) Risk Classification**:
   * Evaluates vulnerability against quantum attacks (Shor's / Grover's algorithms) to plan migration to Post-Quantum Cryptography (NIST FIPS 203 ML-KEM & FIPS 204 ML-DSA).
   * Catalogs whether algorithms are **Quantum-Resistant**, **Quantum-Vulnerable**, or **Legacy / Insecure** (e.g. MD5, SHA-1, DES).
@@ -104,7 +118,8 @@ OPTIONS:
     -t, --trivy <PATH>      Specify path to trivy executable (auto-installed if omitted)
     --template <PATH>       Specify path to HTML report template (default: /opt/html.tpl, auto-embedded)
     --offline               Run in offline mode using local DB without remote repo queries (default)
-    --online                Allow remote Maven repository queries (may trigger rate limits)
+    --online                Allow remote Maven repository queries (with automatic offline fallback)
+    --timeout <DURATION>    Network timeout for remote repository queries (default: 3m)
     -i, --interactive       Force interactive configuration wizard
     -y, --batch             Non-interactive batch mode (accept all defaults without prompt)
     -h, --help              Print this help information
@@ -210,16 +225,30 @@ The files in `/opt/bom/cbom/<module>.cbom.json` conform to the CycloneDX 1.6 Cry
 | **20** | **Structured Property** | Descriptors defining the organized format of data within a component listed in an SBOM. | Structural format descriptors (JVM Bytecode Archive, Node.js Module, XML POM). |
 | **21** | **Unique Identifier** | Distinct code assigned to each software component ensuring accurate tracking and management. | Standard Package URL (`purl`, e.g., `pkg:maven/group/artifact@version`) or `bom-ref`. |
 
+### CERT-In Audit & Health Metrics: Formulas & Definitions
+
+To provide a mathematically rigorous and audit-ready assessment, `bom-scanner` clearly separates **Schema Format Coverage** from **Software Supply Chain Security Health**:
+
+| Metric | Displayed Value | Mathematical Formula | Meaning & Regulatory Scope |
+|:-------|:---------------:|:---------------------|:---------------------------|
+| **CERT-In Field Coverage** | `21 / 21` | $$\text{Field Coverage} = \frac{\text{Mapped Fields}}{\text{Total Mandated Fields (21)}} \times 100\% = 100\%$$ | **Schema & Data Model Completeness**: Confirms that 100% of the 21 mandatory attributes mandated by CERT-In are present, populated, and exported in the report table and RFC-4180 CSV artifact. |
+| **Clean Component Rate** | `X.X%` | $$\text{Clean Component Rate} = \left(\frac{\text{Clean Components (0 Known CVEs)}}{\text{Total Components}}\right) \times 100\%$$ | **Operational Security Health**: Quantifies the percentage of software components entirely free of known security vulnerabilities (CVEs/GHSA). Eliminates the misleading practice of claiming "100% compliance" when critical/high vulnerabilities exist. |
+
+#### Clean Component Rate Health Thresholds & Dynamic Visual Indicators:
+* 🟢 **$\ge 90.0\%$ (Green - `#16a34a`)**: **Healthy Security Posture** — The overwhelming majority of dependencies are clean and vulnerability-free.
+* 🟡 **$75.0\% - 89.9\%$ (Amber - `#d97706`)**: **Moderate Exposure** — Low to medium severity findings exist; planned dependency upgrades or patch reviews recommended.
+* 🔴 **$< 75.0\%$ (Red - `#dc2626`)**: **Elevated Risk / Action Required** — Significant vulnerability footprint; immediate remediation of High and Critical CVEs required under CERT-In incident prevention directions.
+
 ### Generated CERT-In HTML Artifacts
 1. **Module Reports (`/opt/bom/sbom/CERT-In/<module>.cert-in.html`)**:
    * Interactive 21-column data table with sticky headers.
-   * Executive KPI metric cards (Total Components, Clean vs Vulnerable, Critical/High CVEs, Open Source vs Proprietary).
+   * Executive KPI metric cards (Total Components, Clean vs Vulnerable, Critical/High CVEs, Open Source vs Proprietary, CERT-In Field Coverage `21 / 21`, Clean Component Rate `X.X%`).
    * Real-time search and filter controls (All, Vulnerable Only, Critical & High, Clean).
    * **1-Click RFC-4180 CSV Export**: Generates a standard `.csv` spreadsheet with all 21 CERT-In fields for regulatory submission.
    * Print-ready stylesheet for PDF generation.
 2. **Executive Consolidated Dashboard (`/opt/bom/sbom/CERT-In/CERT-In_Executive_SBOM.html`)**:
    * Enterprise-wide roll-up across all scanned modules.
-   * Portfolio compliance statistics and vulnerability matrix.
+   * Portfolio compliance statistics, CERT-In Field Coverage (`21 / 21`), and enterprise-wide Clean Component Rate (`X.X%`).
    * 1-Click export of the entire enterprise portfolio into a unified 21-field CSV.
 
 ---

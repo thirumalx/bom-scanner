@@ -452,7 +452,7 @@ pub fn scan_module_for_cbom(module_path: &Path, module_name: &str) -> Vec<Crypto
     scan_source_files(module_path, module_name, patterns, &mut assets);
 
     // 2. Scan for physical keystores, certificates, and HSM configs
-    scan_keystore_files(module_path, module_name, &mut assets);
+    crate::cert_scanner::scan_certificates_and_keystores(module_path, module_name, &mut assets);
 
     assets
 }
@@ -539,6 +539,7 @@ fn scan_single_java_file(
     }
 }
 
+#[allow(dead_code)]
 fn scan_keystore_files(dir: &Path, module_name: &str, assets: &mut Vec<CryptoAsset>) {
     let entries = match fs::read_dir(dir) {
         Ok(e) => e,

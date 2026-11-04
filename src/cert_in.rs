@@ -250,14 +250,39 @@ fn classify_license(license_str: &str) -> (String, String) {
     }
 }
 
+pub fn is_internal_or_proprietary(group: Option<&str>, name: &str) -> bool {
+    let lower_name = name.to_lowercase();
+    if lower_name.contains("internal")
+        || lower_name.contains("proprietary")
+        || lower_name.contains("inhouse")
+        || lower_name.contains("nesl")
+    {
+        return true;
+    }
+    if let Some(g) = group {
+        let lower_g = g.to_lowercase();
+        if lower_g.starts_with("in.thirumal")
+            || lower_g.starts_with("co.in.nesl")
+            || lower_g.starts_with("com.nesl")
+            || lower_g.starts_with("com.company")
+            || lower_g.starts_with("com.security.crypt")
+            || lower_g.contains("internal")
+            || lower_g.contains("proprietary")
+            || lower_g.contains("inhouse")
+            || lower_g.contains("nesl")
+        {
+            return true;
+        }
+    }
+    false
+}
+
 fn determine_origin(group: Option<&str>, purl: Option<&str>, name: &str) -> String {
+    if is_internal_or_proprietary(group, name) {
+        return "Proprietary / In-House Development".to_string();
+    }
     if let Some(p) = purl {
         if p.starts_with("pkg:maven") {
-            if let Some(g) = group {
-                if g.starts_with("in.thirumal") || g.starts_with("com.company") || g.contains("internal") {
-                    return "Proprietary / In-House Development".to_string();
-                }
-            }
             return "Open Source (Maven Central Public Repository)".to_string();
         } else if p.starts_with("pkg:npm") {
             return "Open Source (npm Public Registry)".to_string();
@@ -276,7 +301,13 @@ fn determine_origin(group: Option<&str>, purl: Option<&str>, name: &str) -> Stri
     }
 }
 
-fn determine_supplier(group: Option<&str>, supplier_name: Option<&str>, purl: Option<&str>) -> String {
+fn determine_supplier(group: Option<&str>, supplier_name: Option<&str>, purl: Option<&str>, name: &str) -> String {
+    if is_internal_or_proprietary(group, name) {
+        if let Some(g) = group {
+            return format!("In-House Development Team ({})", g);
+        }
+        return "In-House Development Team (Internal)".to_string();
+    }
     if let Some(sn) = supplier_name {
         if !sn.trim().is_empty() {
             return sn.trim().to_string();
@@ -482,6 +513,7 @@ pub fn parse_cyclonedx_for_cert_in(
                 comp.group.as_deref(),
                 comp.supplier.as_ref().and_then(|s| s.name.as_deref()),
                 comp.purl.as_deref(),
+                &comp_name,
             );
 
             // Field 5: License & Field 13: Usage Restrictions
@@ -717,6 +749,19 @@ pub fn generate_cert_in_html_report(
     }
 
     let clean_count = total.saturating_sub(vulnerable_count);
+    let clean_rate = if total > 0 {
+        (clean_count as f64 / total as f64) * 100.0
+    } else {
+        100.0
+    };
+    let clean_rate_str = format!("{:.1}%", clean_rate);
+    let clean_rate_color = if clean_rate >= 90.0 {
+        "#16a34a"
+    } else if clean_rate >= 75.0 {
+        "#d97706"
+    } else {
+        "#dc2626"
+    };
     let timestamp = components
         .first()
         .map(|c| c.timestamp.as_str())
@@ -1046,7 +1091,7 @@ pub fn generate_cert_in_html_report(
         <div>Module: <strong>{module}</strong></div>
         <div>Assembly Timestamp: <strong>{timestamp}</strong></div>
         <div>Standard: <strong>CERT-In 21-Field SBOM Spec</strong></div>
-        <div>Engine: <strong>bom-scanner v0.2.0</strong></div>
+        <div>Engine: <strong><a href="https://github.com/CERT-IN/bom-scanner" target="_blank">bom-scanner v0.2.0</a></strong></div>
       </div>
     </div>
   </header>
@@ -1074,9 +1119,14 @@ pub fn generate_cert_in_html_report(
       <div class="kpi-subtext">{copyleft} Copyleft licenses tracked</div>
     </div>
     <div class="kpi-card">
-      <div class="kpi-title">CERT-In Compliance</div>
-      <div class="kpi-value" style="color: #0284c7;">100%</div>
-      <div class="kpi-subtext">All 21 Mandatory Fields Populated</div>
+      <div class="kpi-title">CERT-In Field Coverage</div>
+      <div class="kpi-value" style="color: #0284c7;">21 / 21</div>
+      <div class="kpi-subtext">100% Mandatory Fields Mapped</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-title">Clean Component Rate</div>
+      <div class="kpi-value" style="color: {clean_rate_color};">{clean_rate}</div>
+      <div class="kpi-subtext">{clean} of {total} components CVE-free</div>
     </div>
   </section>
 
@@ -1264,6 +1314,8 @@ pub fn generate_cert_in_html_report(
         timestamp = escape_html(timestamp),
         total = total,
         clean = clean_count,
+        clean_rate = clean_rate_str,
+        clean_rate_color = clean_rate_color,
         vulnerable = vulnerable_count,
         vuln_color = if vulnerable_count > 0 { "#dc2626" } else { "#16a34a" },
         crit = critical_count,
@@ -1309,6 +1361,21 @@ pub fn generate_executive_cert_in_dashboard(
         total_prop += m.proprietary_count;
         total_copyleft += m.copyleft_count;
     }
+
+    let total_clean_comps = total_comps.saturating_sub(total_vuln_comps);
+    let clean_rate = if total_comps > 0 {
+        (total_clean_comps as f64 / total_comps as f64) * 100.0
+    } else {
+        100.0
+    };
+    let clean_rate_str = format!("{:.1}%", clean_rate);
+    let clean_rate_color = if clean_rate >= 90.0 {
+        "#16a34a"
+    } else if clean_rate >= 75.0 {
+        "#d97706"
+    } else {
+        "#dc2626"
+    };
 
     let timestamp = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
 
@@ -1408,13 +1475,13 @@ pub fn generate_executive_cert_in_dashboard(
       padding: 0 24px;
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
-      gap: 16px;
+      gap: 8px;
     }}
     .kpi-card {{
       background: var(--card-bg);
       border: 1px solid var(--border);
       border-radius: 12px;
-      padding: 20px;
+      padding: 10px;
       box-shadow: 0 1px 3px rgba(0,0,0,0.05);
     }}
     .kpi-title {{ font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); margin-bottom: 8px; }}
@@ -1543,9 +1610,14 @@ pub fn generate_executive_cert_in_dashboard(
       <div class="kpi-subtext">{total_copyleft} Copyleft licenses identified</div>
     </div>
     <div class="kpi-card">
-      <div class="kpi-title">CERT-In Compliance Rate</div>
-      <div class="kpi-value" style="color: #0284c7;">100%</div>
-      <div class="kpi-subtext">Audit-Ready 21-Field Datasets</div>
+      <div class="kpi-title">CERT-In Field Coverage</div>
+      <div class="kpi-value" style="color: #0284c7;">21 / 21</div>
+      <div class="kpi-subtext">100% Mandatory Fields Mapped</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-title">Clean Component Rate</div>
+      <div class="kpi-value" style="color: {clean_rate_color};">{clean_rate}</div>
+      <div class="kpi-subtext">{total_clean_comps} of {total_comps} components CVE-free</div>
     </div>
   </section>
 
@@ -1672,6 +1744,9 @@ pub fn generate_executive_cert_in_dashboard(
         total_modules = total_modules,
         timestamp = escape_html(&timestamp),
         total_comps = total_comps,
+        total_clean_comps = total_clean_comps,
+        clean_rate = clean_rate_str,
+        clean_rate_color = clean_rate_color,
         total_vuln_comps = total_vuln_comps,
         vuln_color = if total_vuln_comps > 0 { "#dc2626" } else { "#16a34a" },
         total_crit = total_crit,
@@ -1727,5 +1802,36 @@ mod tests {
             let exec_html = generate_executive_cert_in_dashboard(&[summary], &comps);
             let _ = fs::write(out_dir.join("CERT-In_Executive_SBOM.html"), &exec_html);
         }
+    }
+
+    #[test]
+    fn test_internal_company_jar_detection() {
+        assert!(is_internal_or_proprietary(Some("com.security.crypt"), "NESLEncryptionDecryption"));
+        assert!(is_internal_or_proprietary(Some("co.in.nesl"), "NESL_FTP"));
+        assert!(is_internal_or_proprietary(Some("in.thirumal"), "oauth-server"));
+        assert!(is_internal_or_proprietary(None, "NESL-internal-util"));
+        assert!(!is_internal_or_proprietary(Some("org.springframework.boot"), "spring-boot-starter-web"));
+
+        let origin_prop = determine_origin(
+            Some("com.security.crypt"),
+            Some("pkg:maven/com.security.crypt/NESLEncryptionDecryption@2.0.0"),
+            "NESLEncryptionDecryption",
+        );
+        assert_eq!(origin_prop, "Proprietary / In-House Development");
+
+        let origin_oss = determine_origin(
+            Some("org.apache.commons"),
+            Some("pkg:maven/org.apache.commons/commons-lang3@3.12.0"),
+            "commons-lang3",
+        );
+        assert_eq!(origin_oss, "Open Source (Maven Central Public Repository)");
+
+        let supplier_prop = determine_supplier(
+            Some("co.in.nesl"),
+            None,
+            Some("pkg:maven/co.in.nesl/NESL_FTP@1.0.0"),
+            "NESL_FTP",
+        );
+        assert!(supplier_prop.contains("In-House Development Team"));
     }
 }
